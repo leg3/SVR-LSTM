@@ -190,3 +190,118 @@ i <- 0
 # Training controls
 patience <- 20
 epoch    <- 300
+
+# OUTER LOOP: iterate lag window sizes
+for (lag_window in lag_grid) {
+  # INNER LOOP: iterate forecast horizons
+  for (h in horizons) {
+    i <- i + 1
+
+    # ---------------------------------------------------------------
+    # Build supervised train/test sets for this (lag_window, h)
+    #   - X is a 3D array: (samples, lag_window, 1)
+    #   - y is the horizon target vector
+    # ---------------------------------------------------------------
+    sup_train <- make_supervised(train_df$y, lag_window, h)
+    sup_test  <- make_supervised(test_df$y, lag_window, h)
+
+    # Keras expects y as a 2D array for this setup: (samples, 1)
+    y_train <- matrix(sup_train$y, ncol = 1)
+    y_test  <- matrix(sup_test$y, ncol = 1)
+
+    # Reset graph/session to avoid cross-run state bleed
+    keras3::clear_session()
+    set_random_seed(599 + lag_window * 10 + h)
+
+    # Define a simple LSTM:
+    #   input: (timesteps = lag_window, features = 1)
+    #   recurrent: 16-unit LSTM layer
+    #   output: 1-unit linear dense layer (regression)
+    model <- keras_model_sequential() %>%
+      layer_lstm(units = 16, input_shape = c(lag_window, 1)) %>%
+      layer_dense(units = 1)
+
+    # Compile with MSE loss and MAE metric (NN-style evaluation)
+    model %>%
+      compile(optimizer = "adam",
+              loss = "mse",
+              metrics = list("mae"))
+
+    # Early stopping: choose the epoch that minimizes internal validation loss
+    cb_es <- callback_early_stopping(
+      monitor = "val_loss",
+      patience = patience,
+      restore_best_weights = TRUE
+    )
+
+    # Fit the model on TRAIN, using the last 20% of training samples
+    # as the internal validation split for early stopping
+    history <- model %>%
+      fit(
+        x = sup_train$X,
+        y = y_train,
+        validation_split = 0.20,
+        epochs = epoch,
+        batch_size = 32,
+        shuffle = FALSE,
+        callbacks = list(cb_es),
+        verbose = 1
+      )
+
+    # Identify the epoch with minimum validation loss (for reporting)
+    best_epoch <- which.min(history$metrics$val_loss)
+
+    # Evaluate test performance on the scaled modeling scale
+    test_metrics <- model %>% evaluate(sup_test$X, y_test, verbose = 0)
+
+
+    # ---------------------------------------------------------------
+    # Store prediction tables (scaled + inverse-transformed columns)
+    # ---------------------------------------------------------------
+
+    preds_lstm_list[[i]] <-
+      make_pred_tbl(
+        model,
+        sup_test,
+        y_test,
+        test_df$date,
+        lag_window,
+        h,
+        "test",
+        scaler_mu = scaler_mu,
+        scaler_sd = scaler_sd
+      ) %>%
+      select(-split)
+
+    # ---------------------------------------------------------------
+    # Raw-scale metrics: compute errors on inverse-transformed log(SVR)
+    # ---------------------------------------------------------------
+
+    test_pred_tbl <- preds_lstm_list[[i]]
+
+    test_mse_raw  <- mean((test_pred_tbl$y_raw - test_pred_tbl$y_hat_raw)^2, na.rm = TRUE)
+    test_rmse_raw <- sqrt(test_mse_raw)
+    test_mae_raw  <- mean(abs(test_pred_tbl$y_raw - test_pred_tbl$y_hat_raw),
+                          na.rm = TRUE)
+
+
+    # ---------------------------------------------------------------
+    # Store one metrics row for this (lag_window, h)
+    #   - test_* are on the SCALED modeling scale (from evaluate())
+    #   - *_raw are on the ORIGINAL log(SVR) scale (inverse-transformed)
+    # ---------------------------------------------------------------
+    results_lstm_list[[i]] <- tibble(
+      lag_window = lag_window,
+      horizon    = h,
+      best_epoch = best_epoch,
+
+      test_mse   = as.numeric(test_metrics[[1]]),
+      test_rmse  = sqrt(as.numeric(test_metrics[[1]])),
+      test_mae   = as.numeric(test_metrics[[2]]),
+
+      test_mse_raw   = test_mse_raw,
+      test_rmse_raw  = test_rmse_raw,
+      test_mae_raw   = test_mae_raw
+    )
+  }
+}
