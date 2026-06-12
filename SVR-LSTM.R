@@ -321,3 +321,24 @@ write_csv(metrics_lstm_result, "LSTM Metrics SELECTED FINAL.csv")
 
 # Print metrics table
 metrics_lstm_result
+
+# Create the needed time series for plot
+# Selected test-period series for Phase 7 visualization
+
+lstm_h1_series <- preds_lstm %>%
+  filter(horizon == 1, lag_window == 15) %>%
+  arrange(date) %>%
+  select(
+    date,
+    actual_log_svr = y_raw,
+    predicted_log_svr = y_hat_raw
+  )
+
+lstm_h3_series <- preds_lstm %>%
+  filter(horizon == 3, lag_window == 18) %>%
+  arrange(date) %>%
+  select(
+    date,
+    actual_log_svr = y_raw,
+    predicted_log_svr = y_hat_raw
+  )
