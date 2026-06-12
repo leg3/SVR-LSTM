@@ -363,3 +363,58 @@ recession_bands <- recession_series %>%
     # extend to cover the last month/day
     .groups = "drop"
   )
+
+
+
+
+# LSTM Forecast vs. Actual h+1
+ggplot(lstm_h1_series, aes(x = date)) +
+  geom_rect(
+    data = recession_bands,
+    inherit.aes = FALSE,
+    aes(
+      xmin = band_start,
+      xmax = band_end,
+      ymin = -Inf,
+      ymax = Inf,
+      fill = "Recession"
+    ),
+    alpha = 0.25
+  ) +
+  geom_line(aes(y = actual_log_svr, color = "Actual log(SVR)"), linewidth = 1.25) +
+  geom_line(aes(y = predicted_log_svr, color = "Predicted log(SVR)"), linewidth = 1.25) +
+  scale_color_manual(values = c(
+    "Actual log(SVR)" = "darkgreen",
+    "Predicted log(SVR)" = "lightgreen"
+  )) +
+  scale_fill_manual(values = c("Recession" = "blue"), name = NULL) +
+  scale_x_date(
+    date_breaks = "1 years",
+    date_labels = "%Y",
+    limits = c(min(lstm_h1_series$date), max(lstm_h1_series$date)),
+    expand = c(0, 0)
+  ) +
+  labs(
+    title = "LSTM Forecast vs. Actual log(SVR)",
+    subtitle = "One-Month-Ahead Forecast (h + 1)",
+    x = NULL,
+    y = "log(SVR)",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "top",
+    legend.justification = "left",
+    legend.direction = "horizontal",
+    legend.text = element_text(size = 12),
+    panel.grid.major.x = element_line(color = "gray80", linewidth = 0.6),
+    panel.grid.minor.x = element_line(color = "gray90", linewidth = 0.4),
+    panel.grid.major.y = element_line(color = "gray90", linewidth = 0.3),
+    panel.grid.minor.y = element_blank(),
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 13, color = "gray30"),
+    plot.caption = element_text(size = 10, color = "gray40", hjust = 0),
+    axis.title.y = element_text(margin = margin(r = 10)),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+ggsave("LSTM CURRENT FORECAST-H1.png", width = 8, height = 4.5, units = "in")
