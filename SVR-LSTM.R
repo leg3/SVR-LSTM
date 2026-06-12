@@ -342,3 +342,24 @@ lstm_h3_series <- preds_lstm %>%
     actual_log_svr = y_raw,
     predicted_log_svr = y_hat_raw
   )
+
+
+# Recession shading: build start/end intervals from USREC (0/1)
+recession_series <- get_fred("USREC", "1990", "2025-12-31" )
+recession_bands <- recession_series %>%
+  mutate(rec = value == 1) %>%
+  arrange(date) %>%
+  mutate(
+    rec_lag = lag(rec, default = FALSE),
+    start = rec & !rec_lag,
+    end   = !rec & rec_lag
+  ) %>%
+  mutate(band_start = if_else(start, date, as.Date(NA))) %>%
+  tidyr::fill(band_start, .direction = "down") %>%
+  filter(rec) %>%
+  group_by(band_start) %>%
+  summarize(
+    band_end = max(date) + days(1),
+    # extend to cover the last month/day
+    .groups = "drop"
+  )
