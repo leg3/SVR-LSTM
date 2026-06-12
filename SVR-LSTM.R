@@ -305,3 +305,19 @@ for (lag_window in lag_grid) {
     )
   }
 }
+
+
+
+# Bind per-run lists into long tables
+results_lstm <- bind_rows(results_lstm_list)
+preds_lstm   <- bind_rows(preds_lstm_list)
+
+# Rank models by horizon then test MAE
+metrics_lstm_result <- results_lstm %>%
+  arrange(horizon, test_mae_raw)
+
+# CSV Export
+write_csv(metrics_lstm_result, "LSTM Metrics SELECTED FINAL.csv")
+
+# Print metrics table
+metrics_lstm_result
